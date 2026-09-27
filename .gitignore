@@ -1,0 +1,48 @@
+# Build & CMake cache
+build/
+out/
+cmake-build-*/
+.vs/
+CMakeUserPresets.json
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.suo
+*.user
+
+# Binaires
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+*.ilk
+*.obj
+
+# Fichiers auto-générés par CMake
+include/core/Config.h
+
+# Qt6 (Anticipation Phase 4)
+*_autogen/
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+.qmake.stash
+
+# Logs générés (on garde le dossier, pas les CSV)
+logs/*.csv
+logs/*.txt
+
+# UML exports (on garde les .puml)
+docs/uml/out/
+docs/uml/*.png
+docs/uml/*.svg
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Keep des dossiers vides
+!.gitkeep
