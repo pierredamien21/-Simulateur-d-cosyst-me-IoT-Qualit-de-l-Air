@@ -1,104 +1,125 @@
-#include "core/Server.h"
 #include "core/Config.h"
 
-#include <fstream>
-#include <iostream>
+#include "core/Server.h"
+#include "core/Sensor.h"
+#include "core/Scheduler.h"
+#include "core/SensorFactory.h"
 
+#include "core/VentilationSystem.h"
+#include "core/AirPurifier.h"
+
+#include "core/LinearRegressionModel.h"
+
+#include <iostream>
+#include <memory>
+
+// ------------------------------------------------------------
+// AP4A - Simulateur d'Ecosysteme IoT & Qualite de l'Air
+//
+// Point d'entree de la version console (Phase 3 finale).
+//
+// Ce programme :
+//   1. Cree un Server (centre d'orchestration)
+//   2. Lui injecte un modele predictif (Strategy) et des actionneurs
+//   3. Cree dynamiquement 5 capteurs via SensorFactory
+//   4. Anime la simulation via Scheduler (Singleton)
+//   5. Analyse periodiquement les mesures (AQI, prediction)
+//   6. Declenche les actionneurs selon les decisions
+// ------------------------------------------------------------
 int main()
 {
-    std::cout << "=== AP4A - Test Phase 1 : Server ===\n\n";
+    std::cout << "==============================================\n";
+    std::cout << " AP4A - Simulateur IoT Qualite de l'Air\n";
+    std::cout << " Version console - Phase 3 finale\n";
+    std::cout << "==============================================\n\n";
 
     // --------------------------------------------------------
-    // Test 1 : Coplien - constructeur par defaut
+    // 1. Serveur
     // --------------------------------------------------------
     Server server;
-    std::cout << "1. Server cree : " << server << "\n";
-
-    // --------------------------------------------------------
-    // Test 2 : openLogs()
-    // --------------------------------------------------------
     server.openLogs();
-    std::cout << "2. openLogs() : " << server.getLogCount()
-        << " fichiers ouverts\n";
+    std::cout << "[1] Server initialise : "
+        << server.getLogCount() << " fichiers de logs\n";
 
     // --------------------------------------------------------
-    // Test 3 : fileWrite() - 5 lignes de test (une par type)
+    // 2. Injection IA + actionneurs
     // --------------------------------------------------------
-    server.fileWrite("temperature",
-        "2026-11-06T14:32:01,1,Temperature,22.5,C");
-    server.fileWrite("humidity",
-        "2026-11-06T14:32:02,2,Humidity,55.3,%");
-    server.fileWrite("co2",
-        "2026-11-06T14:32:03,3,CO2,842.5,ppm");
-    server.fileWrite("sound",
-        "2026-11-06T14:32:04,4,Sound,52,dB");
-    server.fileWrite("light",
-        "2026-11-06T14:32:05,5,Light,1,bool");
-    std::cout << "3. fileWrite() : 5 lignes ecrites\n";
-
-    // Test type inconnu (doit afficher une erreur mais continuer)
-    server.fileWrite("unknown_type", "ceci-ne-doit-pas-crasher");
-    std::cout << "   (test type inconnu : doit afficher une erreur ci-dessus)\n";
+    server.setPredictor(std::make_unique<LinearRegressionModel>());
+    server.addActuator(std::make_unique<VentilationSystem>());
+    server.addActuator(std::make_unique<AirPurifier>());
+    std::cout << "[2] IA + actionneurs injectes\n";
+    std::cout << "    " << server << "\n";
 
     // --------------------------------------------------------
-    // Test 4 : consoleWrite()
+    // 3. Scheduler (Singleton)
     // --------------------------------------------------------
-    server.consoleWrite("4. consoleWrite() OK");
-    std::cout << "   recentMessages = "
-        << server.getRecentMessageCount() << "\n";
+    Scheduler& scheduler = Scheduler::getInstance();
 
     // --------------------------------------------------------
-    // Test 5 : operator<< vers std::cout
+    // 4. Capteurs via Factory
     // --------------------------------------------------------
-    std::cout << "5. operator<< vers cout : " << server << "\n";
+    scheduler.addSensor(SensorFactory::create("Temperature", &server));
+    scheduler.addSensor(SensorFactory::create("Humidity", &server));
+    scheduler.addSensor(SensorFactory::create("CO2", &server));
+    scheduler.addSensor(SensorFactory::create("Sound", &server));
+    scheduler.addSensor(SensorFactory::create("Light", &server));
+    std::cout << "[3] " << scheduler.getSensorCount()
+        << " capteurs crees via SensorFactory\n\n";
 
     // --------------------------------------------------------
-    // Test 6 : operator<< vers std::ofstream
+    // 5. Simulation + analyse periodique
     // --------------------------------------------------------
-    {
-        const std::string testPath =
-            Server::logDir() + "/_operator_test.txt";
+    constexpr int TOTAL_TICKS = 500;
+    constexpr int ANALYZE_EVERY = 50;
+    constexpr int BATCHES = TOTAL_TICKS / ANALYZE_EVERY;
 
-        std::ofstream ofs(testPath);
-        if (ofs.is_open()) {
-            ofs << server << "\n";
-            std::cout << "6. operator<< vers fichier OK\n";
-        }
-        else {
-            std::cerr << "6. Impossible d'ouvrir " << testPath << "\n";
-        }
+    std::cout << "[4] Simulation de " << TOTAL_TICKS
+        << " ticks (" << TOTAL_TICKS / 10 << " s simulees)\n";
+    std::cout << "    Analyse IA tous les " << ANALYZE_EVERY << " ticks\n\n";
+
+    std::cout << "    Tick  |   AQI   | Statut actionneurs\n";
+    std::cout << "    ------+---------+-------------------\n";
+
+    for (int batch = 0; batch < BATCHES; ++batch) {
+        scheduler.simulation(ANALYZE_EVERY);
+        server.process();
+
+        const double aqi = server.getAnalyzer().computeAQI();
+
+        // Compacter l'affichage des actionneurs
+        std::string actLine;
+        const auto& acts = { "VentilationSystem", "AirPurifier" };
+        (void)acts;   // (utilisation optionnelle)
+
+        std::cout << "    " << scheduler.getCurrentTick()
+            << "\t| " << aqi
+            << "\t| voir logs/actuators.csv\n";
     }
 
     // --------------------------------------------------------
-    // Test 7 : Coplien - constructeur par copie
+    // 6. Recapitulatif final
     // --------------------------------------------------------
-    Server copy = server;
-    std::cout << "7. Copie : " << copy
-        << " (recentMessages copies = "
-        << copy.getRecentMessageCount() << ")\n";
+    const double finalAqi = server.getAnalyzer().computeAQI();
+    std::cout << "\n[5] Recapitulatif final :\n";
+    std::cout << "    AQI moyen      : " << finalAqi << " / 100\n";
+    std::cout << "    CO2 moyen      : "
+        << server.getAnalyzer().getAverage("co2") << " ppm\n";
+    std::cout << "    Temperature moy: "
+        << server.getAnalyzer().getAverage("temperature") << " C\n";
+    std::cout << "    Humidite moy   : "
+        << server.getAnalyzer().getAverage("humidity") << " %\n";
 
     // --------------------------------------------------------
-    // Test 8 : Coplien - operateur d'affectation
-    // --------------------------------------------------------
-    Server assigned;
-    assigned = server;
-    std::cout << "8. Affectation : " << assigned
-        << " (recentMessages copies = "
-        << assigned.getRecentMessageCount() << ")\n";
-
-    // --------------------------------------------------------
-    // Test 9 : auto-affectation (doit etre sans danger)
-    // --------------------------------------------------------
-    assigned = assigned;
-    std::cout << "9. Auto-affectation OK\n";
-
-    // --------------------------------------------------------
-    // Fermeture
+    // 7. Fermeture
     // --------------------------------------------------------
     server.closeLogs();
-    copy.closeLogs();
-    assigned.closeLogs();
 
-    std::cout << "\n=== Phase 1 : tous les tests passes ===\n";
+    std::cout << "\n[6] Simulation terminee\n";
+    std::cout << "    Logs dans : " << Server::logDir() << "\n";
+    std::cout << "    - temperature.csv, humidity.csv, co2.csv\n";
+    std::cout << "    - sound.csv, light.csv\n";
+    std::cout << "    - predictions.csv (AQI + TTT)\n";
+    std::cout << "    - actuators.csv (ON/OFF)\n";
+
     return 0;
 }
