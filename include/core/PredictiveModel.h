@@ -1,5 +1,5 @@
-#ifndef AP4A_PREDICTIVE_MODEL_H
-#define AP4A_PREDICTIVE_MODEL_H
+#ifndef AIRQ_PREDICTIVE_MODEL_H
+#define AIRQ_PREDICTIVE_MODEL_H
 
 #include <deque>
 #include <string>
@@ -12,4 +12,4 @@ public:
     virtual std::string getName() const = 0;
 };
 
-#endif // AP4A_PREDICTIVE_MODEL_H
+#endif // AIRQ_PREDICTIVE_MODEL_H

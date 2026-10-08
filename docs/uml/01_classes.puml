@@ -1,0 +1,202 @@
+@startuml 01_classes
+title Diagramme de classes (core)
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+
+package "Temps" {
+  class SimClock <<utility>> {
+    + {static} TICK_MS : int = 100
+    + {static} ACCELERATION : int = 360
+    + {static} SECONDS_PER_TICK : int = 36
+    + {static} TICKS_PER_HOUR : int = 100
+    + {static} TICKS_PER_DAY : int = 2400
+    + {static} todayAt(hour : int) : TimePoint
+    + {static} ticksToDuration(ticks : long long) : seconds
+    + {static} toIso8601(tp : TimePoint) : string
+    + {static} toHourMinute(tp : TimePoint) : string
+  }
+
+  class Scheduler <<Singleton>> {
+    - {static} START_HOUR : int = 6
+    - sensors : vector<unique_ptr<Sensor>>
+    - currentTick : int
+    - startTime : TimePoint
+    - Scheduler()
+    + {static} getInstance() : Scheduler&
+    + addSensor(s : unique_ptr<Sensor>)
+    + simulation(ticks : int)
+    + reset()
+    + isDay() : bool
+    + getHour() : int
+    + getSimulatedTime() : TimePoint
+    + getSensorCount() : size_t
+    + getCurrentTick() : int
+  }
+}
+
+package "Capteurs" {
+  abstract class Sensor {
+    # {static} counter : int
+    # {static} rng : mt19937
+    # id : int
+    # type : string
+    # unit : string
+    # value : double
+    # periodMs : int
+    # elapsedMs : int
+    # server : Server*
+    + Sensor(srv, type, unit, periodMs)
+    + Sensor(other : const Sensor&)
+    + operator=(other : const Sensor&) : Sensor&
+    + ~Sensor() <<virtual>>
+    + update() <<virtual>>
+    + execute() <<virtual>>
+    + reset() <<virtual>>
+    # {abstract} generateValue() : double
+    # logKey() : string
+    + getId() / getType() / getValue() / getUnit() / getPeriodMs()
+    + friend operator<<(os, s) : ostream&
+  }
+
+  class TemperatureSensor { # generateValue() : double }
+  class HumiditySensor    { # generateValue() : double }
+  class Co2Sensor {
+    + {static} GLITCH_PROBABILITY : double = 0.01
+    + {static} GLITCH_AMPLITUDE : double = 400
+    # generateValue() : double
+  }
+  class SoundSensor       { # generateValue() : double }
+  class LightSensor       { # generateValue() : double }
+
+  class SensorFactory <<Factory>> {
+    + {static} create(type : string, srv : Server*) : unique_ptr<Sensor>
+  }
+}
+
+package "Serveur" {
+  class Server {
+    - logFiles : map<string, ofstream>
+    - recentMessages : vector<string>
+    - analyzer : DataAnalyzer
+    - predictor : unique_ptr<PredictiveModel>
+    - anomalyDetector : unique_ptr<PredictiveModel>
+    - actuators : vector<unique_ptr<Actuator>>
+    - observers : vector<ServerObserver*>
+    - samplePeriodMs : map<string, int>
+    - lastRejected : map<string, bool>
+    - lastTTT : double
+    - co2Critical : bool
+    - anomalyCount : size_t
+    + Server()
+    + Server(other : const Server&)
+    + operator=(other : const Server&) : Server&
+    + ~Server()
+    + consoleWrite(msg)
+    + fileWrite(type, line)
+    + openLogs() / closeLogs() / reset()
+    + receive(s : const Sensor&)
+    + process()
+    + notify(category, msg)
+    + attach(o : ServerObserver*) / detach(o)
+    + setPredictor(p) / setAnomalyDetector(d)
+    + addActuator(a)
+    + getAnalyzer() : const DataAnalyzer&
+    + getLastTTT() : double
+    + isActuatorActive(name) : bool
+    + friend operator<<(os, srv) : ostream&
+  }
+
+  class DataAnalyzer {
+    + {static} WINDOW_SIZE : size_t = 20
+    - history : map<string, deque<double>>
+    + push(type, value) / clear()
+    + getAverage() / getStdDev() / getMin() / getMax() / getLast()
+    + getHistory(type) : deque<double>
+    + computeAQI() : double
+  }
+
+  struct Notification {
+    + timestamp : string
+    + category : string
+    + message : string
+  }
+
+  interface ServerObserver <<Observer>> {
+    + {abstract} onNotify(n : const Notification&)
+  }
+  class ConsoleAlertObserver {
+    - out : ostream&
+    - alertCount : size_t
+    + onNotify(n)
+    + getAlertCount() : size_t
+  }
+}
+
+package "IA (Strategy)" {
+  interface PredictiveModel <<Strategy>> {
+    + {abstract} predict(history : const deque<double>&) : double
+    + {abstract} getName() : string
+  }
+  class LinearRegressionModel {
+    + {static} THRESHOLD : double = 1000
+    + {static} MIN_SAMPLES : size_t = 10
+  }
+  class AnomalyDetectorModel {
+    + {static} Z_THRESHOLD : double = 4
+    + {static} MIN_SAMPLES : size_t = 6
+  }
+}
+
+package "Actionneurs" {
+  interface Actuator {
+    + {abstract} activate()
+    + {abstract} deactivate()
+    + {abstract} isActive() : bool
+    + {abstract} getName() : string
+  }
+  class VentilationSystem { - active : bool }
+  class AirPurifier       { - active : bool }
+
+  class RoomState <<Singleton>> {
+    - co2, temperature, humidity : double
+    - sound, light, occupants : double
+    - ventilationOn, purifierOn : bool
+    - isDay : bool
+    - currentHour : int
+    + {static} getInstance() : RoomState&
+    + update() / reset()
+    + setDayContext(day, hour)
+    + setVentilation(on) / setPurifier(on)
+    + getCO2() / getTemperature() / getHumidity() ...
+  }
+}
+
+Sensor <|-- TemperatureSensor
+Sensor <|-- HumiditySensor
+Sensor <|-- Co2Sensor
+Sensor <|-- SoundSensor
+Sensor <|-- LightSensor
+
+SensorFactory ..> Sensor : <<create>>
+Scheduler "1" *-- "0..*" Sensor : anime >
+Scheduler ..> RoomState : update()
+Scheduler ..> SimClock
+Sensor "0..*" --> "1" Server : receive() >
+Sensor ..> RoomState : lit
+
+Server *-- DataAnalyzer
+Server "1" *-- "0..2" PredictiveModel
+Server "1" *-- "0..*" Actuator
+Server "1" o-- "0..*" ServerObserver : notifie >
+Server ..> Notification
+Server ..> Scheduler : heure simulee
+
+PredictiveModel <|.. LinearRegressionModel
+PredictiveModel <|.. AnomalyDetectorModel
+ServerObserver <|.. ConsoleAlertObserver
+Actuator <|.. VentilationSystem
+Actuator <|.. AirPurifier
+VentilationSystem ..> RoomState : setVentilation()
+AirPurifier ..> RoomState : setPurifier()
+@enduml

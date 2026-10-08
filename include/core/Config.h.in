@@ -1,11 +1,11 @@
-#ifndef AP4A_CONFIG_H
-#define AP4A_CONFIG_H
+#ifndef AIRQ_CONFIG_H
+#define AIRQ_CONFIG_H
 
 // ============================================================
 // Fichier genere automatiquement par CMake a partir de
 // Config.h.in. NE PAS MODIFIER DIRECTEMENT.
 // ============================================================
 
-#define AP4A_PROJECT_ROOT "@CMAKE_CURRENT_SOURCE_DIR@"
+#define AIRQ_PROJECT_ROOT "@CMAKE_CURRENT_SOURCE_DIR@"
 
-#endif // AP4A_CONFIG_H
+#endif // AIRQ_CONFIG_H

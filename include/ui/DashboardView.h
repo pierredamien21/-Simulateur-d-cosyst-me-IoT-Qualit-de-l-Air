@@ -1,81 +1,105 @@
-#ifndef AP4A_DASHBOARD_VIEW_H
-#define AP4A_DASHBOARD_VIEW_H
+#ifndef AIRQ_DASHBOARD_VIEW_H
+#define AIRQ_DASHBOARD_VIEW_H
+
+#include "ui/Theme.h"
 
 #include <QMainWindow>
 #include <QMap>
 #include <QString>
 
+class AqiGauge;
 class ChartWidget;
+class KpiCard;
+class QBoxLayout;
 class QLabel;
+class QListWidget;
 class QPushButton;
-class QTimer;
+class QSlider;
 
-/**
- * @brief Fenetre principale de l'interface graphique.
- *
- * Affiche :
- *  - 4 KPI (AQI, CO2 moyen, TTT, Temperature moyenne)
- *  - 5 mesures en direct (CO2, Temp, Hum, Son, Lumiere)
- *  - une grille 2x3 de graphiques (CO2, Temp, Hum, Son, Lumiere)
- *  - l'etat des actionneurs (Ventilation, Purificateur)
- *  - 3 boutons (Play / Pause / Reset)
- */
+// Fenetre principale. De haut en bas :
+//  - la barre avec les boutons, la vitesse, le theme et l'heure
+//  - les indicateurs (jauge AQI + 4 cartes)
+//  - le graphique du CO2 et 3 petits graphiques
+//  - a droite : les actionneurs et la liste des alertes
+// La vue ne calcule rien, elle affiche ce que le controleur lui donne
+// (sauf le changement de theme qu'elle gere elle-meme).
 class DashboardView : public QMainWindow {
     Q_OBJECT
 
 public:
+    static constexpr int    MAX_ALERTS    = 200;
+    static constexpr double CO2_THRESHOLD = 1000.0;
+
     explicit DashboardView(QWidget* parent = nullptr);
     ~DashboardView() override;
 
     // --------------------------------------------------------
-    // Mises a jour (appelees par le controller)
+    // Appele par le controleur
     // --------------------------------------------------------
-    void updateKPIs(double aqi, double co2, double ttt, double temperature);
-    void updateLiveMeasures(double co2, double temp, double hum,
-        double sound, double light);        // <-- NOUVEAU
-    void updateChart(const QString& name, double x, double y);
-    void updateActuatorState(const QString& name, bool active);
+    void updateClock(const QString& time, bool day);
+    void updateKPIs(double aqi, double ttt);
+    void updateMeasure(const QString& key, double last, double average);
+    void updateChart(const QString& key, double x, double y);
+    void updateActuatorState(const QString& name, bool active, double x);
+    void addAlert(const QString& timestamp, const QString& category,
+        const QString& message);
+    void setRunning(bool running);
+    void setSpeedLabel(const QString& text);
 
-    // --------------------------------------------------------
-    // Accesseurs pour le controller
-    // --------------------------------------------------------
+    void resetDisplay();
+
+    // Le controleur branche ses slots sur ces widgets
+
     QPushButton* playButton()  const;
     QPushButton* pauseButton() const;
     QPushButton* resetButton() const;
+    QSlider*     speedSlider() const;
 
-    void clearChart();
+private slots:
+    void toggleTheme();
 
 private:
     void buildUI();
-    void buildKPIPanel(class QVBoxLayout* parentLayout);
-    void buildLiveMeasuresPanel(class QVBoxLayout* parentLayout);  // <-- NOUVEAU
-    void buildActuatorPanel(class QVBoxLayout* parentLayout);
-    void buildChartsGrid(class QGridLayout* gridLayout);
+    QWidget* buildTopBar();
+    QWidget* buildKpiRow();
+    QWidget* buildCharts();
+    QWidget* buildSidePanel();
 
-    // KPI (valeurs moyennes + AQI)
-    QLabel* aqiValue;
-    QLabel* co2Value;
-    QLabel* tttValue;
-    QLabel* tempValue;
+    void applyTheme(const Theme& theme);
+    void colorAlert(int row);
 
-    // Mesures en direct (5 capteurs, valeurs instantanees)
-    QLabel* liveCo2;      // <-- NOUVEAU
-    QLabel* liveTemp;     // <-- NOUVEAU
-    QLabel* liveHum;      // <-- NOUVEAU
-    QLabel* liveSound;    // <-- NOUVEAU
-    QLabel* liveLight;    // <-- NOUVEAU
+    // Change une propriete utilisee par le QSS et redessine le widget
+    static void setStyleState(QWidget* w, const char* property, const QString& value);
 
-    // Actionneurs
-    QLabel* ventilationState;
-    QLabel* purifierState;
+    Theme theme;
 
-    // Grille de graphiques : nom -> widget
-    QMap<QString, ChartWidget*> charts;
-
-    // Boutons
+    // Barre du haut
     QPushButton* btnPlay;
     QPushButton* btnPause;
     QPushButton* btnReset;
+    QPushButton* btnTheme;
+    QSlider*     slider;
+    QLabel*      speedValue;
+    QLabel*      statusLabel;
+    QLabel*      clockLabel;
+    QLabel*      periodBadge;
+
+    // Indicateurs
+    AqiGauge* gauge;
+    QLabel*   aqiLevel;
+    KpiCard*  co2Card;
+    KpiCard*  tttCard;
+    KpiCard*  tempCard;
+    KpiCard*  humCard;
+
+    // Actionneurs
+    QLabel* ventilationBadge;
+    QLabel* purifierBadge;
+
+    QListWidget* alertList;
+
+    // "co2", "temperature"... -> graphique
+    QMap<QString, ChartWidget*> charts;
 };
 
-#endif // AP4A_DASHBOARD_VIEW_H
+#endif // AIRQ_DASHBOARD_VIEW_H

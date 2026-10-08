@@ -28,6 +28,11 @@ void DataAnalyzer::push(const std::string& type, double value) {
     }
 }
 
+// Vide tout (bouton Reset)
+void DataAnalyzer::clear() {
+    history.clear();
+}
+
 // Moyenne
 double DataAnalyzer::getAverage(const std::string& type) const {
     auto it = history.find(normalize(type));

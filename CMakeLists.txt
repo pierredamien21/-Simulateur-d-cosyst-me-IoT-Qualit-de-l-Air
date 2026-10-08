@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(AP4A_IoT_AirQuality
+project(IoT_AirQuality_Simulator
     VERSION 0.2.0
     DESCRIPTION "Simulateur d'Ecosysteme IoT & Qualite de l'Air"
     LANGUAGES CXX
@@ -17,7 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Options compilateur
 # ------------------------------------------------------------
 if (MSVC)
-    add_compile_options(/W4 /permissive- /Zc:__cplusplus)
+    add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

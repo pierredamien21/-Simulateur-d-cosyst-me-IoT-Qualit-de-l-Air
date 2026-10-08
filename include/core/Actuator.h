@@ -1,17 +1,10 @@
-#ifndef AP4A_ACTUATOR_H
-#define AP4A_ACTUATOR_H
+#ifndef AIRQ_ACTUATOR_H
+#define AIRQ_ACTUATOR_H
 
 #include <string>
 
-/**
- * @brief Interface abstraite d'un actionneur.
- *
- * Un actionneur est un composant capable de modifier
- * l'environnement en reponse a une decision du serveur
- * (ex : ventilation, purificateur d'air).
- *
- * Interface pure : toutes les methodes sont virtuelles pures.
- */
+// Interface commune aux actionneurs (ventilation, purificateur...).
+// Le serveur les allume et les eteint selon ses decisions.
 class Actuator {
 public:
     virtual ~Actuator() = default;
@@ -22,4 +15,4 @@ public:
     virtual std::string getName() const = 0;
 };
 
-#endif // AP4A_ACTUATOR_H
+#endif // AIRQ_ACTUATOR_H

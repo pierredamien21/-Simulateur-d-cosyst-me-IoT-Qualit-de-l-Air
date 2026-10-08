@@ -1,5 +1,6 @@
 #include "core/Sensor.h"
 #include "core/Server.h"
+#include "core/SimClock.h"
 
 #include <algorithm>   // std::transform
 #include <cctype>      // std::tolower
@@ -24,7 +25,7 @@ Sensor& Sensor::operator=(const Sensor& other){
         return *this;
     }
 
-    // On ne reassigne pas id (identite logique du capteur).
+    // On garde notre id, chaque capteur a le sien.
     type = other.type;
     unit = other.unit;
     value = other.value;
@@ -40,8 +41,7 @@ Sensor::~Sensor() = default;
 // Comportement dynamique
 
 void Sensor::update(){
-    constexpr int TICK_MS = 100;   // 1 tick = 100 ms simules
-    elapsedMs += TICK_MS;
+    elapsedMs += SimClock::TICK_MS;
 
     if (elapsedMs >= periodMs) {
         execute();
@@ -54,15 +54,19 @@ void Sensor::execute()
     value = generateValue();
 
     if (server) {
-        server->receive(*this);   // <-- delegue le formatage et le stockage
+        server->receive(*this);   // c'est le serveur qui ecrit dans le CSV
     }
 }
 
+void Sensor::reset()
+{
+    value = 0.0;
+    elapsedMs = 0;
+}
 
-// NOTE : generateValue() est PURE VIRTUELLE (= 0) dans Sensor.h
-// Elle est implementee dans chaque specialisation :
-//   - TemperatureSensor, HumiditySensor, Co2Sensor,
-//     SoundSensor, LightSensor
+
+// generateValue() est virtuelle pure, chaque capteur
+// (TemperatureSensor, Co2Sensor...) a sa propre version.
 
 
 // Conversion du type en minuscules

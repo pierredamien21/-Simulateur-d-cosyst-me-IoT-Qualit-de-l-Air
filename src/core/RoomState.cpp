@@ -21,6 +21,7 @@ RoomState::RoomState()
     , light(0.0)
     , occupants(0.0)
     , ventilationOn(false)
+    , purifierOn(false)
     , isDay(true)
     , currentHour(6)
 {
@@ -37,7 +38,7 @@ void RoomState::setDayContext(bool day, int hour)
 }
 
 // ------------------------------------------------------------
-// Mise a jour physique (1 tick = 100 ms simules)
+// Mise a jour de la piece (1 tick = 36 s d'horloge)
 // ------------------------------------------------------------
 
 void RoomState::update()
@@ -46,7 +47,7 @@ void RoomState::update()
     // 1. Nombre d'occupants selon l'heure
     // --------------------------------------------------------
     if (isDay) {
-        // Pic vers 11h-14h, minimum vers 18h
+        // Max vers 14h, au moins 2 personnes
         const double h = static_cast<double>(currentHour);
         const double factor = std::sin((h - 8.0) * 3.14159265 / 12.0);
         occupants = std::max(2.0, 5.0 + 8.0 * factor);
@@ -61,11 +62,14 @@ void RoomState::update()
     // --------------------------------------------------------
     double co2Delta = occupants * CO2_PER_PERSON;
 
+    // L'air se renouvelle un peu tout seul (plus il y a de CO2, plus ca sort)
+    co2Delta -= (co2 - CO2_BASE) * CO2_LEAK_RATE;
+
     if (ventilationOn) {
         co2Delta -= CO2_VENT_RATE;
     }
-    else {
-        co2Delta -= CO2_LEAK;
+    if (purifierOn) {
+        co2Delta -= CO2_PURIF_RATE;
     }
 
     co2 += co2Delta;
@@ -74,14 +78,21 @@ void RoomState::update()
     // --------------------------------------------------------
     // 3. Temperature
     // --------------------------------------------------------
-    const double targetTemp = ventilationOn ? TEMP_VENT : TEMP_MAX;
+    const double targetTemp = ventilationOn ? TEMP_VENT
+                            : (isDay ? TEMP_MAX : TEMP_NIGHT);
     temperature += (targetTemp - temperature) * 0.01;
     temperature += occupants * 0.002;
 
     // --------------------------------------------------------
     // 4. Humidite
     // --------------------------------------------------------
-    const double targetHum = ventilationOn ? HUM_VENT : HUM_BASE;
+    double targetHum = HUM_BASE;
+    if (ventilationOn) {
+        targetHum = HUM_VENT;
+    }
+    else if (purifierOn) {
+        targetHum = HUM_PURIF;
+    }
     humidity += (targetHum - humidity) * 0.008;
     humidity += occupants * 0.005;
     humidity = std::clamp(humidity, HUM_MIN, HUM_MAX);
@@ -115,3 +126,24 @@ double RoomState::getOccupants()   const { return occupants; }
 
 void RoomState::setVentilation(bool on) { ventilationOn = on; }
 bool RoomState::isVentilationOn() const { return ventilationOn; }
+
+void RoomState::setPurifier(bool on) { purifierOn = on; }
+bool RoomState::isPurifierOn() const { return purifierOn; }
+
+// ------------------------------------------------------------
+// Reinitialisation
+// ------------------------------------------------------------
+
+void RoomState::reset()
+{
+    co2           = CO2_BASE;
+    temperature   = TEMP_BASE;
+    humidity      = HUM_BASE;
+    sound         = 35.0;
+    light         = 0.0;
+    occupants     = 0.0;
+    ventilationOn = false;
+    purifierOn    = false;
+    isDay         = true;
+    currentHour   = 6;
+}

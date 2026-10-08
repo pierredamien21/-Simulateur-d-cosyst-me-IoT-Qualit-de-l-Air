@@ -1,5 +1,5 @@
-#ifndef AP4A_SERVER_H
-#define AP4A_SERVER_H
+#ifndef AIRQ_SERVER_H
+#define AIRQ_SERVER_H
 
 #include "core/DataAnalyzer.h"
 
@@ -14,34 +14,36 @@
 class Sensor;
 class Actuator;
 class PredictiveModel;
+class ServerObserver;
 
-/**
- * @brief Serveur central du simulateur IoT.
- *
- * Le Server est le chef d'orchestre :
- *  - recoit les mesures via receive()
- *  - alimente le DataAnalyzer
- *  - ecrit les logs CSV par type de capteur
- *  - analyse et predit via process()
- *  - declenche les actionneurs selon les decisions
- *  - notifie les evenements critiques (Observer)
- *
- * Forme canonique de Coplien : constructeur par defaut,
- * constructeur par copie, operateur d'affectation, destructeur.
- *
- * NOTE : Server n'est PAS un Singleton (contrainte Coplien).
- * Une instance unique est creee dans main() et partagee aux
- * capteurs via pointeur.
- */
+// Serveur central : il recoit les mesures des capteurs, les ecrit
+// dans les CSV, les analyse et allume / eteint les actionneurs.
+// Ce n'est pas un singleton : on le cree dans main() et on donne
+// son adresse aux capteurs.
 class Server {
 public:
+    // --------------------------------------------------------
+    // Seuils de decision
+    // Le purificateur se declenche en premier, la ventilation
+    // ensuite. Seuil ON et seuil OFF differents pour eviter
+    // que ca clignote.
+    // --------------------------------------------------------
+    static constexpr double CO2_CRITICAL      = 1000.0;  // ppm
+    static constexpr double TTT_HORIZON_MIN   = 240.0;   // au dela on ne fait pas confiance a la prevision
+    static constexpr double VENT_ON_TTT_MIN   = 60.0;    // minutes avant le seuil
+    static constexpr double VENT_ON_AQI       = 50.0;
+    static constexpr double VENT_OFF_CO2      = 650.0;   // ppm
+    static constexpr double VENT_OFF_AQI      = 60.0;
+    static constexpr double PURIFIER_ON_AQI   = 52.0;
+    static constexpr double PURIFIER_OFF_AQI  = 62.0;
+
     // --------------------------------------------------------
     // Forme canonique de Coplien
     // --------------------------------------------------------
     Server();
     Server(const Server& other);
     Server& operator=(const Server& other);
-    ~Server();   // declare (pas = default) : unique_ptr incomplets
+    ~Server();   // pas "= default" ici a cause des unique_ptr sur types incomplets
 
     // --------------------------------------------------------
     // Services de base
@@ -51,59 +53,75 @@ public:
     void openLogs();
     void closeLogs();
 
+    // Remet tout a zero (utilise par le bouton Reset)
+    void reset();
+
     // --------------------------------------------------------
-    // Integration capteurs / analyse / decision
+    // Capteurs / analyse / decision
     // --------------------------------------------------------
     void receive(const Sensor& sensor);   // appele par Sensor::execute()
-    void process();                        // analyse + prediction + decision
-    void notify(const std::string& msg);   // alertes (Observer)
+    void process();                        // AQI + prevision + actionneurs
+    void notify(const std::string& category, const std::string& msg);
 
     // --------------------------------------------------------
-    // Injection de strategie (pattern Strategy)
+    // Observer
     // --------------------------------------------------------
-    void setPredictor(std::unique_ptr<PredictiveModel> p);
+    void attach(ServerObserver* observer);
+    void detach(ServerObserver* observer);
 
     // --------------------------------------------------------
-    // Enregistrement d'un actionneur (pattern Composition)
+    // Strategy : on choisit les algos depuis l'exterieur
     // --------------------------------------------------------
+    void setPredictor(std::unique_ptr<PredictiveModel> p);        // temps avant seuil
+    void setAnomalyDetector(std::unique_ptr<PredictiveModel> d);  // z-score
+
     void addActuator(std::unique_ptr<Actuator> a);
 
     // --------------------------------------------------------
-    // Accesseurs (lecture seule)
+    // Accesseurs
     // --------------------------------------------------------
     std::size_t getLogCount() const;
     std::size_t getRecentMessageCount() const;
     const DataAnalyzer& getAnalyzer() const;
     std::size_t getActuatorCount() const;
+    std::size_t getAnomalyCount() const;
 
-    // --------------------------------------------------------
-    // Accesseurs supplementaires (utilises par l'IHM Qt)
-    // --------------------------------------------------------
-    double getLastTTT() const;                                    // <-- AJOUT
-    bool   isActuatorActive(const std::string& name) const;       // <-- AJOUT
+    // En minutes, -1 si pas de depassement prevu
+    double getLastTTT() const;
+    bool   isActuatorActive(const std::string& name) const;
 
-    // --------------------------------------------------------
-    // Chemin du dossier de logs (racine du projet)
-    // --------------------------------------------------------
+    // Dossier logs/ a la racine du projet
     static std::string logDir();
 
-    // --------------------------------------------------------
-    // Operateur de sortie (friend)
-    // --------------------------------------------------------
     friend std::ostream& operator<<(std::ostream& os, const Server& srv);
 
 private:
-    // Met une cle de type en minuscules ("CO2" -> "co2")
+    // "CO2" -> "co2"
     static std::string normalize(const std::string& type);
 
-    // Ecrit une ligne dans le CSV des actionneurs
+    // Heure simulee au format ISO 8601
+    static std::string timestamp();
+
+    // Garde le message dans l'historique (1000 max)
+    void remember(const std::string& message);
+
     void logActuatorState(const std::string& name, bool active);
+
+    // Nombre de mesures CO2 -> minutes simulees
+    double measuresToMinutes(double measures) const;
 
     std::map<std::string, std::ofstream>       logFiles;
     std::vector<std::string>                   recentMessages;
     DataAnalyzer                               analyzer;
     std::unique_ptr<PredictiveModel>           predictor;
+    std::unique_ptr<PredictiveModel>           anomalyDetector;
     std::vector<std::unique_ptr<Actuator>>     actuators;
+    std::vector<ServerObserver*>               observers;      // on ne les possede pas
+    std::map<std::string, int>                 samplePeriodMs; // periode de chaque capteur
+    std::map<std::string, bool>                lastRejected;   // la mesure d'avant a ete rejetee ?
+    double                                     lastTTT;        // en minutes
+    bool                                       co2Critical;    // pour n'alerter qu'au franchissement
+    std::size_t                                anomalyCount;
 };
 
-#endif // AP4A_SERVER_H
+#endif // AIRQ_SERVER_H

@@ -1,14 +1,20 @@
 #include "ui/DashboardView.h"
+#include "ui/AqiGauge.h"
 #include "ui/ChartWidget.h"
+#include "ui/KpiCard.h"
 
+#include <QFrame>
 #include <QGridLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListWidget>
 #include <QPushButton>
-#include <QToolBar>
+#include <QSlider>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <cmath>
 
 // ------------------------------------------------------------
 // Constructeur / destructeur
@@ -16,282 +22,441 @@
 
 DashboardView::DashboardView(QWidget* parent)
     : QMainWindow(parent)
-    , aqiValue(nullptr)
-    , co2Value(nullptr)
-    , tttValue(nullptr)
-    , tempValue(nullptr)
-    , liveCo2(nullptr)          // <-- AJOUT
-    , liveTemp(nullptr)         // <-- AJOUT
-    , liveHum(nullptr)          // <-- AJOUT
-    , liveSound(nullptr)        // <-- AJOUT
-    , liveLight(nullptr)        // <-- AJOUT
-    , ventilationState(nullptr)
-    , purifierState(nullptr)
-    , charts()
+    , theme(Theme::darkTheme())
     , btnPlay(nullptr)
     , btnPause(nullptr)
     , btnReset(nullptr)
+    , btnTheme(nullptr)
+    , slider(nullptr)
+    , speedValue(nullptr)
+    , statusLabel(nullptr)
+    , clockLabel(nullptr)
+    , periodBadge(nullptr)
+    , gauge(nullptr)
+    , aqiLevel(nullptr)
+    , co2Card(nullptr)
+    , tttCard(nullptr)
+    , tempCard(nullptr)
+    , humCard(nullptr)
+    , ventilationBadge(nullptr)
+    , purifierBadge(nullptr)
+    , alertList(nullptr)
+    , charts()
 {
     buildUI();
+    applyTheme(theme);
+    resetDisplay();
 }
 
 DashboardView::~DashboardView() = default;
 
 // ------------------------------------------------------------
-// Construction de l'UI
+// Construction de la fenetre
 // ------------------------------------------------------------
 
 void DashboardView::buildUI()
 {
-    setWindowTitle("AP4A - Simulateur IoT Qualite de l'Air");
-    resize(1400, 800);
+    setWindowTitle("Simulateur IoT - Qualité de l'Air");
+    resize(1200, 740);
+    setMinimumSize(980, 620);
 
-    // Barre d'outils
-    QToolBar* toolbar = addToolBar("Commandes");
-    toolbar->setMovable(false);
-
-    btnPlay = new QPushButton("Play", this);
-    btnPause = new QPushButton("Pause", this);
-    btnReset = new QPushButton("Reset", this);
-    toolbar->addWidget(btnPlay);
-    toolbar->addWidget(btnPause);
-    toolbar->addWidget(btnReset);
-
-    // Central
     QWidget* central = new QWidget(this);
-    QHBoxLayout* mainLayout = new QHBoxLayout(central);
+    QVBoxLayout* root = new QVBoxLayout(central);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
 
-    // Colonne gauche : KPI + mesures en direct + actionneurs
-    QVBoxLayout* leftLayout = new QVBoxLayout();
-    buildKPIPanel(leftLayout);
-    buildLiveMeasuresPanel(leftLayout);   // <-- AJOUT
-    buildActuatorPanel(leftLayout);
-    leftLayout->addStretch();
+    root->addWidget(buildTopBar());
+    root->addWidget(buildKpiRow());
 
-    // Colonne droite : grille de graphiques
-    QGridLayout* gridLayout = new QGridLayout();
-    buildChartsGrid(gridLayout);
-
-    mainLayout->addLayout(leftLayout, 1);
-    mainLayout->addLayout(gridLayout, 4);
+    QHBoxLayout* body = new QHBoxLayout();
+    body->setSpacing(10);
+    body->addWidget(buildCharts(), 3);
+    body->addWidget(buildSidePanel(), 1);
+    root->addLayout(body, 1);
 
     setCentralWidget(central);
 }
 
-// ------------------------------------------------------------
-// Panneau KPI (moyennes + AQI)
-// ------------------------------------------------------------
-
-void DashboardView::buildKPIPanel(QVBoxLayout* parentLayout)
+QWidget* DashboardView::buildTopBar()
 {
-    QGroupBox* kpiBox = new QGroupBox("Indicateurs", this);
-    QVBoxLayout* kpiLayout = new QVBoxLayout(kpiBox);
+    QFrame* bar = new QFrame(this);
+    bar->setObjectName("topBar");
+    QHBoxLayout* layout = new QHBoxLayout(bar);
+    layout->setContentsMargins(12, 8, 12, 8);
+    layout->setSpacing(8);
 
-    aqiValue = new QLabel("-- / 100", kpiBox);
-    co2Value = new QLabel("-- ppm", kpiBox);
-    tttValue = new QLabel("-- ticks", kpiBox);
-    tempValue = new QLabel("-- C", kpiBox);
+    // Des caracteres plutot que des icones : ils prennent la couleur du theme
+    btnPlay  = new QPushButton("▶  Lecture", bar);
+    btnPause = new QPushButton("❚❚  Pause", bar);
+    btnReset = new QPushButton("⟲  Reset", bar);
+    btnPlay->setToolTip("Lancer la simulation");
+    btnPause->setToolTip("Mettre en pause");
+    btnReset->setToolTip("Remettre la simulation a zero (temps, piece, analyse, logs)");
 
-    QFont bigFont; bigFont.setPointSize(14); bigFont.setBold(true);
-    aqiValue->setFont(bigFont);
-    co2Value->setFont(bigFont);
+    statusLabel = new QLabel(bar);
+    statusLabel->setObjectName("status");
 
-    kpiLayout->addWidget(new QLabel("AQI (qualite de l'air) :", kpiBox));
-    kpiLayout->addWidget(aqiValue);
-    kpiLayout->addSpacing(8);
-    kpiLayout->addWidget(new QLabel("CO2 moyen :", kpiBox));
-    kpiLayout->addWidget(co2Value);
-    kpiLayout->addSpacing(8);
-    kpiLayout->addWidget(new QLabel("Time-to-Threshold :", kpiBox));
-    kpiLayout->addWidget(tttValue);
-    kpiLayout->addSpacing(8);
-    kpiLayout->addWidget(new QLabel("Temperature moyenne :", kpiBox));
-    kpiLayout->addWidget(tempValue);
-    kpiLayout->addStretch();
+    QLabel* speedTitle = new QLabel("Vitesse", bar);
+    slider = new QSlider(Qt::Horizontal, bar);
+    slider->setRange(0, 3);           // x0.5, x1, x2, x4
+    slider->setValue(1);
+    slider->setPageStep(1);
+    slider->setFixedWidth(110);
+    speedValue = new QLabel(bar);
+    speedValue->setMinimumWidth(36);
 
-    parentLayout->addWidget(kpiBox);
+    btnTheme = new QPushButton(bar);
+    connect(btnTheme, &QPushButton::clicked, this, &DashboardView::toggleTheme);
+
+    clockLabel = new QLabel("--:--", bar);
+    clockLabel->setObjectName("clock");
+    periodBadge = new QLabel(bar);
+    periodBadge->setObjectName("badge");
+
+    layout->addWidget(btnPlay);
+    layout->addWidget(btnPause);
+    layout->addWidget(btnReset);
+    layout->addSpacing(8);
+    layout->addWidget(statusLabel);
+    layout->addSpacing(16);
+    layout->addWidget(speedTitle);
+    layout->addWidget(slider);
+    layout->addWidget(speedValue);
+    layout->addStretch();
+    layout->addWidget(btnTheme);
+    layout->addSpacing(12);
+    layout->addWidget(clockLabel);
+    layout->addWidget(periodBadge);
+
+    return bar;
 }
 
-// ------------------------------------------------------------
-// Panneau "Mesures en direct" (5 capteurs, valeurs instantanees)
-// ------------------------------------------------------------
-
-void DashboardView::buildLiveMeasuresPanel(QVBoxLayout* parentLayout)
+QWidget* DashboardView::buildKpiRow()
 {
-    QGroupBox* box = new QGroupBox("Mesures en direct", this);
-    QVBoxLayout* layout = new QVBoxLayout(box);
+    QWidget* row = new QWidget(this);
+    QHBoxLayout* layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(10);
 
-    liveCo2 = new QLabel("-- ppm", box);
-    liveTemp = new QLabel("-- C", box);
-    liveHum = new QLabel("-- %", box);
-    liveSound = new QLabel("-- dB", box);
-    liveLight = new QLabel("--", box);
+    // Carte AQI : la jauge + le texte a cote
+    QFrame* aqiCard = new QFrame(row);
+    aqiCard->setObjectName("card");
+    QHBoxLayout* aqiLayout = new QHBoxLayout(aqiCard);
+    aqiLayout->setContentsMargins(10, 6, 14, 6);
 
-    QFont valFont; valFont.setPointSize(11); valFont.setBold(true);
-    liveCo2->setFont(valFont);
-    liveTemp->setFont(valFont);
-    liveHum->setFont(valFont);
-    liveSound->setFont(valFont);
-    liveLight->setFont(valFont);
+    gauge = new AqiGauge(aqiCard);
+    QVBoxLayout* aqiText = new QVBoxLayout();
+    QLabel* aqiTitle = new QLabel("Qualité de l'air", aqiCard);
+    aqiTitle->setObjectName("cardTitle");
+    aqiLevel = new QLabel(aqiCard);
+    aqiLevel->setObjectName("cardSub");
+    QFont levelFont = aqiLevel->font();
+    levelFont.setPointSize(13);
+    levelFont.setBold(true);
+    aqiLevel->setFont(levelFont);
+    aqiText->addStretch();
+    aqiText->addWidget(aqiTitle);
+    aqiText->addWidget(aqiLevel);
+    aqiText->addStretch();
 
-    // Petit helper : libelle + valeur sur la meme ligne
-    auto addRow = [&](const QString& label, QLabel* value) {
-        QHBoxLayout* row = new QHBoxLayout();
-        QLabel* lbl = new QLabel(label, box);
-        lbl->setMinimumWidth(110);
-        row->addWidget(lbl);
-        row->addWidget(value);
-        row->addStretch();
-        layout->addLayout(row);
-        };
+    aqiLayout->addWidget(gauge);
+    aqiLayout->addLayout(aqiText);
 
-    addRow("CO2 :", liveCo2);
-    addRow("Température :", liveTemp);
-    addRow("Humidité :", liveHum);
-    addRow("Son :", liveSound);
-    addRow("Lumière :", liveLight);
+    co2Card  = new KpiCard("CO2", row);
+    tttCard  = new KpiCard("Seuil 1000 ppm atteint dans", row);
+    tempCard = new KpiCard("Température", row);
+    humCard  = new KpiCard("Humidité", row);
 
-    parentLayout->addWidget(box);
+    layout->addWidget(aqiCard, 5);
+    layout->addWidget(co2Card, 4);
+    layout->addWidget(tttCard, 4);
+    layout->addWidget(tempCard, 4);
+    layout->addWidget(humCard, 4);
+
+    return row;
 }
 
-// ------------------------------------------------------------
-// Panneau Actionneurs
-// ------------------------------------------------------------
-
-void DashboardView::buildActuatorPanel(QVBoxLayout* parentLayout)
+QWidget* DashboardView::buildCharts()
 {
-    QGroupBox* actBox = new QGroupBox("Actionneurs", this);
-    QVBoxLayout* actLayout = new QVBoxLayout(actBox);
+    QWidget* area = new QWidget(this);
+    QVBoxLayout* layout = new QVBoxLayout(area);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(10);
 
-    ventilationState = new QLabel("OFF", actBox);
-    purifierState = new QLabel("OFF", actBox);
+    ChartWidget* co2 = new ChartWidget("CO2 (ppm)  -  bandes : ventilation active", "ppm", 300.0, area);
+    co2->setThreshold(CO2_THRESHOLD);
+    charts["co2"] = co2;
+    layout->addWidget(co2, 3);
 
-    QFont stateFont; stateFont.setPointSize(12); stateFont.setBold(true);
-    ventilationState->setFont(stateFont);
-    purifierState->setFont(stateFont);
-
-    actLayout->addWidget(new QLabel("Ventilation :", actBox));
-    actLayout->addWidget(ventilationState);
-    actLayout->addSpacing(8);
-    actLayout->addWidget(new QLabel("Purificateur d'air :", actBox));
-    actLayout->addWidget(purifierState);
-
-    parentLayout->addWidget(actBox);
-}
-
-// ------------------------------------------------------------
-// Grille de graphiques 2x3 avec echelles Y adaptees
-// ------------------------------------------------------------
-
-void DashboardView::buildChartsGrid(QGridLayout* gridLayout)
-{
-    // Chaque graphique a une echelle Y adaptee a son type
     const struct {
         QString key;
         QString title;
-        QString yLabel;
-        double  maxY;
-    } specs[] = {
-        { "co2",         "CO2 (ppm)",         "ppm",  1500.0 },
-        { "temperature", "Temperature (C)",   "C",    30.0   },
-        { "humidity",    "Humidite (%)",      "%",    100.0  },
-        { "sound",       "Son (dB)",          "dB",   100.0  },
-        { "light",       "Lumiere (0/1)",     "bool", 1.0    },
+        QString unit;
+        double  minSpan;
+    } small[] = {
+        { "temperature", "Température (°C)", "°C", 4.0  },
+        { "humidity",    "Humidité (%)",     "%",  10.0 },
+        { "sound",       "Son (dB)",         "dB", 20.0 },
     };
 
-    int row = 0;
-    int col = 0;
-    for (const auto& spec : specs) {
-        ChartWidget* chart = new ChartWidget(spec.title,
-            spec.yLabel,
-            spec.maxY,   // <-- echelle Y
-            this);
-        chart->setMinimumSize(350, 250);
-
+    QHBoxLayout* row = new QHBoxLayout();
+    row->setSpacing(10);
+    for (const auto& spec : small) {
+        ChartWidget* chart = new ChartWidget(spec.title, spec.unit, spec.minSpan, area);
+        chart->setCompact(true);
         charts[spec.key] = chart;
-        gridLayout->addWidget(chart, row, col);
-
-        ++col;
-        if (col >= 3) {   // 3 colonnes
-            col = 0;
-            ++row;
-        }
+        row->addWidget(chart);
     }
+    layout->addLayout(row, 2);
+
+    return area;
+}
+
+QWidget* DashboardView::buildSidePanel()
+{
+    QWidget* panel = new QWidget(this);
+    QVBoxLayout* layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(10);
+
+    // Actionneurs
+    QFrame* actCard = new QFrame(panel);
+    actCard->setObjectName("card");
+    QGridLayout* grid = new QGridLayout(actCard);
+    grid->setContentsMargins(14, 10, 14, 12);
+    grid->setVerticalSpacing(8);
+
+    QLabel* actTitle = new QLabel("Actionneurs", actCard);
+    actTitle->setObjectName("cardTitle");
+    ventilationBadge = new QLabel(actCard);
+    ventilationBadge->setObjectName("badge");
+    purifierBadge = new QLabel(actCard);
+    purifierBadge->setObjectName("badge");
+
+    grid->addWidget(actTitle, 0, 0, 1, 2);
+    grid->addWidget(new QLabel("Ventilation", actCard), 1, 0);
+    grid->addWidget(ventilationBadge, 1, 1, Qt::AlignRight);
+    grid->addWidget(new QLabel("Purificateur", actCard), 2, 0);
+    grid->addWidget(purifierBadge, 2, 1, Qt::AlignRight);
+
+    // Alertes
+    QFrame* alertCard = new QFrame(panel);
+    alertCard->setObjectName("card");
+    QVBoxLayout* alertLayout = new QVBoxLayout(alertCard);
+    alertLayout->setContentsMargins(14, 10, 8, 10);
+
+    QLabel* alertTitle = new QLabel("Alertes", alertCard);
+    alertTitle->setObjectName("cardTitle");
+    alertList = new QListWidget(alertCard);
+    alertList->setWordWrap(true);
+    alertList->setFocusPolicy(Qt::NoFocus);
+    alertList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    alertLayout->addWidget(alertTitle);
+    alertLayout->addWidget(alertList, 1);
+
+    layout->addWidget(actCard);
+    layout->addWidget(alertCard, 1);
+    panel->setMinimumWidth(240);
+
+    return panel;
+}
+
+// ------------------------------------------------------------
+// Theme
+// ------------------------------------------------------------
+
+void DashboardView::toggleTheme()
+{
+    applyTheme(theme.dark ? Theme::lightTheme() : Theme::darkTheme());
+}
+
+void DashboardView::applyTheme(const Theme& t)
+{
+    theme = t;
+    setStyleSheet(theme.styleSheet());
+
+    btnTheme->setText(theme.dark ? "Thème clair" : "Thème sombre");
+    gauge->setTheme(theme);
+
+    const QMap<QString, QColor> colors = {
+        { "co2", theme.co2 }, { "temperature", theme.temperature },
+        { "humidity", theme.humidity }, { "sound", theme.sound },
+    };
+    for (auto it = charts.begin(); it != charts.end(); ++it) {
+        it.value()->setTheme(theme, colors.value(it.key(), theme.accent));
+    }
+
+    for (int i = 0; i < alertList->count(); ++i) {
+        colorAlert(i);
+    }
+}
+
+void DashboardView::setStyleState(QWidget* w, const char* property, const QString& value)
+{
+    if (w->property(property).toString() == value) {
+        return;
+    }
+    w->setProperty(property, value);
+    w->style()->unpolish(w);
+    w->style()->polish(w);
 }
 
 // ------------------------------------------------------------
 // Mises a jour
 // ------------------------------------------------------------
 
-void DashboardView::updateKPIs(double aqi,
-    double co2,
-    double ttt,
-    double temperature)
+void DashboardView::updateClock(const QString& time, bool day)
 {
-    aqiValue->setText(QString::number(aqi, 'f', 2) + " / 100");
-    co2Value->setText(QString::number(co2, 'f', 1) + " ppm");
-    tempValue->setText(QString::number(temperature, 'f', 2) + " C");
+    clockLabel->setText(time);
+    periodBadge->setText(day ? "Jour" : "Nuit");
+    setStyleState(periodBadge, "state", day ? "day" : "night");
+}
+
+void DashboardView::updateKPIs(double aqi, double ttt)
+{
+    gauge->setValue(aqi);
+    aqiLevel->setText(AqiGauge::levelLabel(aqi));
+    setStyleState(aqiLevel, "tone", AqiGauge::levelTone(aqi));
 
     if (ttt < 0.0) {
-        tttValue->setText("stable (pas de depassement)");
+        tttCard->setValue("Stable");
+        tttCard->setSubtitle("aucun dépassement prévu", "good");
     }
     else {
-        tttValue->setText(QString::number(ttt, 'f', 1) + " ticks");
-    }
-
-    QString color;
-    if (aqi >= 70.0)      color = "green";
-    else if (aqi >= 40.0) color = "orange";
-    else                  color = "red";
-
-    aqiValue->setStyleSheet("color: " + color + ";");
-}
-
-void DashboardView::updateLiveMeasures(double co2, double temp, double hum,
-    double sound, double light)
-{
-    liveCo2->setText(QString::number(co2, 'f', 1) + " ppm");
-    liveTemp->setText(QString::number(temp, 'f', 2) + " C");
-    liveHum->setText(QString::number(hum, 'f', 1) + " %");
-    liveSound->setText(QString::number(sound, 'f', 1) + " dB");
-
-    const bool day = (light > 0.5);
-    liveLight->setText(day ? "Jour" : "Nuit");
-    liveLight->setStyleSheet(day ? "color: orange; font-weight: bold;"
-        : "color: gray; font-weight: bold;");
-}
-
-void DashboardView::updateChart(const QString& name, double x, double y)
-{
-    auto it = charts.find(name);
-    if (it != charts.end() && it.value() != nullptr) {
-        it.value()->addPoint(x, y);
+        tttCard->setValue(QString::number(ttt, 'f', 0) + " min");
+        tttCard->setSubtitle("prévision par régression", ttt < 60.0 ? "bad" : "warn");
     }
 }
 
-void DashboardView::updateActuatorState(const QString& name, bool active)
+void DashboardView::updateMeasure(const QString& key, double last, double average)
 {
-    const QString stateText = active ? "ON" : "OFF";
-    const QString style = active
-        ? "color: green; font-weight: bold;"
-        : "color: gray; font-weight: bold;";
-
-    if (name == "VentilationSystem" && ventilationState) {
-        ventilationState->setText(stateText);
-        ventilationState->setStyleSheet(style);
+    struct Format { KpiCard* card; QString unit; int decimals; double tolerance; bool risingIsBad; };
+    const QMap<QString, Format> formats = {
+        { "co2",         { co2Card,  " ppm", 0, 15.0, true  } },
+        { "temperature", { tempCard, " °C",  1, 0.2,  false } },
+        { "humidity",    { humCard,  " %",   0, 1.0,  false } },
+    };
+    if (!formats.contains(key)) {
+        return;
     }
-    else if (name == "AirPurifier" && purifierState) {
-        purifierState->setText(stateText);
-        purifierState->setStyleSheet(style);
-    }
-}
+    const Format f = formats.value(key);
 
-void DashboardView::clearChart()
-{
-    for (auto it = charts.begin(); it != charts.end(); ++it) {
-        if (it.value() != nullptr) {
-            it.value()->clearData();
+    f.card->setValue(QString::number(last, 'f', f.decimals) + f.unit);
+
+    // Tendance : on compare la derniere valeur a la moyenne
+    const double delta = last - average;
+    QString arrow = "→ stable";
+    QString tone = "neutral";
+    if (std::fabs(delta) > f.tolerance) {
+        arrow = delta > 0 ? "↑ en hausse" : "↓ en baisse";
+        if (f.risingIsBad) {
+            tone = delta > 0 ? "bad" : "good";
         }
+    }
+    f.card->setSubtitle(arrow + "  ·  moy. "
+        + QString::number(average, 'f', f.decimals) + f.unit, tone);
+}
+
+void DashboardView::updateChart(const QString& key, double x, double y)
+{
+    if (ChartWidget* chart = charts.value(key, nullptr)) {
+        chart->addPoint(x, y);
+    }
+}
+
+void DashboardView::updateActuatorState(const QString& name, bool active, double x)
+{
+    QLabel* badge = nullptr;
+    if (name == "VentilationSystem") {
+        badge = ventilationBadge;
+        if (ChartWidget* co2 = charts.value("co2", nullptr)) {
+            co2->setBandState(x, active);
+        }
+    }
+    else if (name == "AirPurifier") {
+        badge = purifierBadge;
+    }
+
+    if (badge) {
+        badge->setText(active ? "ON" : "OFF");
+        setStyleState(badge, "state", active ? "on" : "off");
+    }
+}
+
+void DashboardView::addAlert(const QString& timestamp,
+    const QString& category,
+    const QString& message)
+{
+    static const QMap<QString, QString> labels = {
+        { "ANOMALY", "Anomalie" }, { "CO2", "CO2" }, { "ACTUATOR", "Action" },
+    };
+
+    // On remplace les noms de classes par des noms lisibles
+    QString text = message;
+    if (category == "ACTUATOR") {
+        const QString suffix = text.contains("VentilationSystem") ? "e" : "";   // "la" ventilation
+        text.replace("VentilationSystem", "Ventilation")
+            .replace("AirPurifier", "Purificateur")
+            .replace(" desactive", " désactivé" + suffix)
+            .replace(" active", " activé" + suffix);
+    }
+
+    // Juste l'heure, la date ne sert a rien ici
+    const QString time = timestamp.mid(timestamp.indexOf('T') + 1, 5);
+    QListWidgetItem* item = new QListWidgetItem(
+        time + "   " + labels.value(category, category) + "\n" + text);
+    item->setData(Qt::UserRole, category);
+    alertList->insertItem(0, item);
+    colorAlert(0);
+
+    while (alertList->count() > MAX_ALERTS) {
+        delete alertList->takeItem(alertList->count() - 1);
+    }
+}
+
+void DashboardView::colorAlert(int row)
+{
+    QListWidgetItem* item = alertList->item(row);
+    const QString category = item->data(Qt::UserRole).toString();
+
+    QColor color = theme.text;
+    if (category == "ANOMALY")  color = theme.danger;
+    else if (category == "CO2") color = theme.warning;
+    item->setForeground(color);
+}
+
+void DashboardView::setRunning(bool running)
+{
+    statusLabel->setText(running ? "● En cours" : "❚❚ En pause");
+    setStyleState(statusLabel, "state", running ? "on" : "off");
+}
+
+void DashboardView::setSpeedLabel(const QString& text)
+{
+    speedValue->setText(text);
+}
+
+void DashboardView::resetDisplay()
+{
+    clockLabel->setText("--:--");
+    periodBadge->setText("Jour");
+    setStyleState(periodBadge, "state", "day");
+
+    gauge->setValue(-1.0);
+    aqiLevel->setText("--");
+    setStyleState(aqiLevel, "tone", "neutral");
+
+    for (KpiCard* card : { co2Card, tttCard, tempCard, humCard }) {
+        card->clear();
+    }
+
+    updateActuatorState("VentilationSystem", false, 0.0);
+    updateActuatorState("AirPurifier", false, 0.0);
+
+    alertList->clear();
+    for (ChartWidget* chart : charts) {
+        chart->clearData();
     }
 }
 
@@ -302,3 +467,4 @@ void DashboardView::clearChart()
 QPushButton* DashboardView::playButton()  const { return btnPlay; }
 QPushButton* DashboardView::pauseButton() const { return btnPause; }
 QPushButton* DashboardView::resetButton() const { return btnReset; }
+QSlider*     DashboardView::speedSlider() const { return slider; }

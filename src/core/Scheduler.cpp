@@ -1,16 +1,16 @@
 #include "core/Scheduler.h"
 #include "core/Sensor.h"
-#include "core/RoomState.h"      // <-- AJOUT
+#include "core/RoomState.h"
 
 #include <utility>
 
 // ------------------------------------------------------------
-// Singleton — idiome de Meyers
+// Singleton (static local, cree au premier appel)
 // ------------------------------------------------------------
 
 Scheduler& Scheduler::getInstance()
 {
-    static Scheduler instance;   // cree au premier appel, detruit a la fin
+    static Scheduler instance;
     return instance;
 }
 
@@ -21,6 +21,7 @@ Scheduler& Scheduler::getInstance()
 Scheduler::Scheduler()
     : sensors()
     , currentTick(0)
+    , startTime(SimClock::todayAt(START_HOUR))
 {
 }
 
@@ -32,7 +33,9 @@ Scheduler::~Scheduler() = default;
 
 void Scheduler::addSensor(std::unique_ptr<Sensor> sensor)
 {
-    sensors.push_back(std::move(sensor));
+    if (sensor) {
+        sensors.push_back(std::move(sensor));
+    }
 }
 
 std::size_t Scheduler::getSensorCount() const
@@ -54,18 +57,26 @@ void Scheduler::simulation(int ticks)
     RoomState& room = RoomState::getInstance();
 
     for (int i = 0; i < ticks; ++i) {
-        // 1. Mettre a jour le contexte temporel de la piece
+        // 1. On donne l'heure a la piece
         room.setDayContext(isDay(), getHour());
 
-        // 2. Faire evoluer la physique de la piece AVANT les mesures
+        // 2. La piece evolue (avant les mesures)
         room.update();
 
-        // 3. Animer les capteurs (qui liront le nouvel etat)
+        // 3. Les capteurs mesurent le nouvel etat
         for (auto& sensor : sensors) {
             sensor->update();
         }
 
         ++currentTick;
+    }
+}
+
+void Scheduler::reset()
+{
+    currentTick = 0;
+    for (auto& sensor : sensors) {
+        sensor->reset();
     }
 }
 
@@ -75,7 +86,7 @@ void Scheduler::simulation(int ticks)
 
 int Scheduler::getHour() const
 {
-    const int totalHours = currentTick / TICKS_PER_HOUR;
+    const int totalHours = currentTick / SimClock::TICKS_PER_HOUR;
     return (START_HOUR + totalHours) % 24;
 }
 
@@ -83,4 +94,9 @@ bool Scheduler::isDay() const
 {
     const int hour = getHour();
     return hour >= 6 && hour < 19;
+}
+
+SimClock::TimePoint Scheduler::getSimulatedTime() const
+{
+    return startTime + SimClock::ticksToDuration(currentTick);
 }

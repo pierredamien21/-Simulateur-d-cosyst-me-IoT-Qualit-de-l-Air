@@ -12,5 +12,12 @@ double Co2Sensor::generateValue()
 {
     // Lit le CO2 de la piece + bruit de mesure (+- 15 ppm)
     std::normal_distribution<double> noise(0.0, 15.0);
-    return RoomState::getInstance().getCO2() + noise(rng);
+    double measure = RoomState::getInstance().getCO2() + noise(rng);
+
+    // Fausse mesure de temps en temps (pour tester le detecteur)
+    std::bernoulli_distribution glitch(GLITCH_PROBABILITY);
+    if (glitch(rng)) {
+        measure += GLITCH_AMPLITUDE;
+    }
+    return measure;
 }

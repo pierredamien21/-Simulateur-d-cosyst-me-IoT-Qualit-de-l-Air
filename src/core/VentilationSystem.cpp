@@ -9,13 +9,13 @@ VentilationSystem::VentilationSystem()
 void VentilationSystem::activate()
 {
     active = true;
-    RoomState::getInstance().setVentilation(true);   // <-- AJOUT
+    RoomState::getInstance().setVentilation(true);
 }
 
 void VentilationSystem::deactivate()
 {
     active = false;
-    RoomState::getInstance().setVentilation(false);  // <-- AJOUT
+    RoomState::getInstance().setVentilation(false);
 }
 
 bool VentilationSystem::isActive() const

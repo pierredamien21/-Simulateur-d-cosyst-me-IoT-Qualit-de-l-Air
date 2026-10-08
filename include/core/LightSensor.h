@@ -1,15 +1,10 @@
-#ifndef AP4A_LIGHT_SENSOR_H
-#define AP4A_LIGHT_SENSOR_H
+#ifndef AIRQ_LIGHT_SENSOR_H
+#define AIRQ_LIGHT_SENSOR_H
 
 #include "core/Sensor.h"
 
-/**
- * @brief Capteur de lumiere (bool : 0 = nuit, 1 = jour).
- *
- * Represente par un double (Option A : value : double + unit).
- *  - 0.0 : pas de lumiere
- *  - 1.0 : lumiere detectee
- */
+// Capteur de lumiere : 1 s'il fait jour, 0 sinon
+// (stocke dans un double comme les autres capteurs)
 class LightSensor : public Sensor {
 public:
     explicit LightSensor(Server* srv);
@@ -18,4 +13,4 @@ protected:
     double generateValue() override;
 };
 
-#endif // AP4A_LIGHT_SENSOR_H
+#endif // AIRQ_LIGHT_SENSOR_H

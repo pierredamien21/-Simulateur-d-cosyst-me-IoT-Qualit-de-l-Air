@@ -1,11 +1,9 @@
-#ifndef AP4A_HUMIDITY_SENSOR_H
-#define AP4A_HUMIDITY_SENSOR_H
+#ifndef AIRQ_HUMIDITY_SENSOR_H
+#define AIRQ_HUMIDITY_SENSOR_H
 
 #include "core/Sensor.h"
 
-/**
- * @brief Capteur d'humidite (30-70 %).
- */
+// Capteur d'humidite (%), une mesure toutes les 2 s
 
 class HumiditySensor : public Sensor {
 public:
@@ -15,4 +13,4 @@ protected:
     double generateValue() override;
 };
 
-#endif // AP4A_HUMIDITY_SENSOR_H
+#endif // AIRQ_HUMIDITY_SENSOR_H

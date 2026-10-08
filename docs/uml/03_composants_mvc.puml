@@ -1,0 +1,31 @@
+@startuml 03_composants_mvc
+title Architecture MVC (core sans Qt / IHM Qt)
+
+package "Modele : src/core (C++17 pur, aucun #include <Q...>)" {
+  [Scheduler] --> [Sensors]
+  [Sensors] --> [Server]
+  [Scheduler] --> [RoomState]
+  [Server] --> [DataAnalyzer]
+  [Server] --> [PredictiveModel]
+  [Server] --> [Actuators]
+  [Actuators] --> [RoomState]
+  [Server] --> [CSV logs] : fileWrite
+  interface "ServerObserver" as IObs
+  [Server] ..> IObs : notify
+}
+
+package "Vue + Controleur : src/ui (Qt6 Widgets / Charts)" {
+  [DashboardController] ..|> IObs
+  [DashboardController] --> [DashboardView] : mises a jour
+  [DashboardView] --> [ChartWidget]
+  [DashboardView] ..> [DashboardController] : signaux (Play / Pause / Reset)
+}
+
+[DashboardController] --> [Scheduler] : simulation(10)
+[DashboardController] --> [Server] : process() / lecture seule
+
+node "simulator_core.exe" as core
+node "simulator_gui.exe" as gui
+core ..> [Server] : main_core.cpp + ConsoleAlertObserver
+gui ..> [DashboardController] : main_qt.cpp
+@enduml

@@ -1,11 +1,9 @@
-#ifndef AP4A_TEMPERATURE_SENSOR_H
-#define AP4A_TEMPERATURE_SENSOR_H
+#ifndef AIRQ_TEMPERATURE_SENSOR_H
+#define AIRQ_TEMPERATURE_SENSOR_H
 
 #include "core/Sensor.h"
 
-/**
- * @brief Capteur de temperature (5-28 C).
- */
+// Capteur de temperature (C), une mesure par seconde
 
 class TemperatureSensor : public Sensor {
 public:
@@ -15,4 +13,4 @@ protected:
 	double generateValue() override;
 
 };
-#endif // AP4A_TEMPERATURE_SENSOR_H
+#endif // AIRQ_TEMPERATURE_SENSOR_H

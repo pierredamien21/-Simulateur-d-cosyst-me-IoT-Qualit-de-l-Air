@@ -1,32 +1,19 @@
-#ifndef AP4A_SENSOR_H
-#define AP4A_SENSOR_H
+#ifndef AIRQ_SENSOR_H
+#define AIRQ_SENSOR_H
 
 #include <ostream>
 #include <random>
 #include <string>
 
-class Server; // forward declaration : Server est une classe
+class Server;
 
-/**
- * @brief Capteur autonome du simulateur IoT (classe ABSTRAITE).
- *
- * Un capteur est un processus anime par le Scheduler. Il possede :
- *  - un identifiant unique (genere via compteur statique),
- *  - un type textuel ("Temperature", "CO2", ...),
- *  - une valeur courante (double, unite portee par 'unit'),
- *  - une base de temps interne (period / elapsed) qui determine
- *    la frequence reelle de ses mesures,
- *  - un pointeur vers le Server dedie (non proprietaire).
- *
- *  - update() et execute() gardent une implementation par defaut
- *    (logique de timing + formatage CSV) : pas de duplication.
- *  - generateValue() est PURE VIRTUELLE : chaque specialisation
- *    produit sa propre plage de valeurs (TemperatureSensor,
- *    Co2Sensor, etc.).
- */
+// Classe de base de tous les capteurs (abstraite).
+// Chaque capteur a sa propre periode : le Scheduler appelle
+// update() a chaque tick et le capteur ne mesure que quand
+// sa periode est ecoulee.
+// Les classes filles n'ont qu'a ecrire generateValue().
 class Sensor {
 public:
-    // Constructeur avec parametres
     Sensor(Server* srv,
         const std::string& type,
         const std::string& unit,
@@ -35,13 +22,12 @@ public:
     // Forme canonique de Coplien
     Sensor(const Sensor& other);
     Sensor& operator=(const Sensor& other);
-    virtual ~Sensor();   // virtuel : destruction polymorphe
+    virtual ~Sensor();   // virtuel pour detruire via un Sensor*
 
-    // Comportement dynamique
-    virtual void update();    // appele par le Scheduler a chaque tick
-    virtual void execute();   // appele quand elapsed >= period
+    virtual void update();    // a chaque tick
+    virtual void execute();   // quand la periode est ecoulee
+    virtual void reset();
 
-    // Accesseurs (lecture seule)
     int getId() const;
     std::string getType() const;
     double getValue() const;
@@ -49,22 +35,18 @@ public:
     int getPeriodMs() const;
 
 
-    // Operateur de sortie (friend)
     friend std::ostream& operator<<(std::ostream& os, const Sensor& s);
 
 protected:
-    // Methode ABSTRAITE : chaque specialisation doit la definir
-    // pour produire une valeur dans sa propre plage realiste.
+    // A definir dans chaque capteur
     virtual double generateValue() = 0;
 
-    // Conversion du type en minuscules ("Temperature" -> "temperature")
-    // pour matcher la cle utilisee par Server::logFiles.
+    // "Temperature" -> "temperature" (nom du fichier CSV)
     std::string logKey() const;
 
 
-    // Attributs
-    static int counter;   // compteur global d'identifiants
-    static std::mt19937 rng;       // generateur de nombres aleatoires
+    static int counter;            // pour donner un id unique
+    static std::mt19937 rng;       // generateur aleatoire partage
 
     int id;
     std::string type;
@@ -72,7 +54,7 @@ protected:
     double value;
     int periodMs;
     int elapsedMs;
-    Server* server;            // pointeur non proprietaire
+    Server* server;            // le capteur ne possede pas le serveur
 };
 
-#endif // AP4A_SENSOR_H
+#endif // AIRQ_SENSOR_H

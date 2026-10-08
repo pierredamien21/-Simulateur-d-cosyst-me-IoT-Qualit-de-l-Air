@@ -1,0 +1,53 @@
+@startuml 02_sequence_tick
+title Sequence : un pas de simulation puis une analyse
+
+participant "main / DashboardController" as Main
+participant "Scheduler" as Sch <<Singleton>>
+participant "RoomState" as Room <<Singleton>>
+participant "Co2Sensor" as S
+participant "Server" as Srv
+participant "AnomalyDetectorModel" as AD
+participant "DataAnalyzer" as DA
+participant "LinearRegressionModel" as LR
+participant "VentilationSystem" as V
+participant "ServerObserver" as Obs
+
+Main -> Sch : simulation(n)
+loop n ticks
+  Sch -> Room : setDayContext(isDay(), getHour())
+  Sch -> Room : update()
+  loop pour chaque capteur
+    Sch -> S : update()
+    S -> S : elapsedMs += TICK_MS
+    alt elapsedMs >= periodMs
+      S -> S : execute()
+      S -> Room : getCO2()
+      S -> Srv : receive(*this)
+      Srv -> Srv : fileWrite("co2", ligne ISO 8601)
+      Srv -> AD : predict(fenetre + mesure)
+      alt z > Z_THRESHOLD (saut isole)
+        Srv -> Obs : onNotify(ANOMALY)
+        note right : mesure rejetee,\nnon ajoutee a l'analyse
+      else mesure valide
+        Srv -> DA : push("co2", valeur)
+        opt franchissement de 1000 ppm
+          Srv -> Obs : onNotify(CO2)
+        end
+      end
+    end
+  end
+end
+
+Main -> Srv : process()
+Srv -> DA : computeAQI()
+Srv -> LR : predict(historique CO2)
+LR --> Srv : mesures avant seuil
+Srv -> Srv : conversion en minutes (SimClock)
+Srv -> Srv : fileWrite("predictions", AQI + TTT)
+alt decision ON (TTT < 60 min ou AQI < 50 ou CO2 > 1000)
+  Srv -> V : activate()
+  V -> Room : setVentilation(true)
+  Srv -> Srv : fileWrite("actuators", ON)
+  Srv -> Obs : onNotify(ACTUATOR)
+end
+@enduml

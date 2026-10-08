@@ -1,5 +1,7 @@
-#ifndef AP4A_DASHBOARD_CONTROLLER_H
-#define AP4A_DASHBOARD_CONTROLLER_H
+#ifndef AIRQ_DASHBOARD_CONTROLLER_H
+#define AIRQ_DASHBOARD_CONTROLLER_H
+
+#include "core/ServerObserver.h"
 
 #include <QObject>
 
@@ -7,45 +9,37 @@ class DashboardView;
 class Server;
 class QTimer;
 
-/**
- * @brief Controleur MVC reliant le Modele (Server) a la Vue (Qt).
- *
- * Responsabilites :
- *  - Possede un QTimer qui declenche un pas de simulation
- *    periodiquement (appel a Scheduler::simulation + Server::process)
- *  - Lit les valeurs du Server (AQI, moyennes) et les pousse vers
- *    la Vue via des signaux
- *  - Relie les boutons Play / Pause / Reset a des slots
- *
- * Le controller ne possede NI le Server NI la Scheduler :
- * il recoit des pointeurs non-proprietaires (fournis par main).
- */
-class DashboardController : public QObject {
+// Le C du MVC : un QTimer fait avancer la simulation, puis le
+// controleur lit les valeurs du serveur et les envoie a la vue.
+// Il recoit aussi les alertes du serveur (Observer) et gere
+// les boutons. Il ne possede ni le serveur ni la vue.
+class DashboardController : public QObject, public ServerObserver {
     Q_OBJECT
 
 public:
+    static constexpr int FRAME_INTERVAL_MS = 100;   // 10 images/s en vitesse x1
+    static constexpr int TICKS_PER_FRAME   = 10;    // = 6 min simulees par image
+
     DashboardController(Server* server,
         DashboardView* view,
         QObject* parent = nullptr);
 
     ~DashboardController() override;
 
+    void onNotify(const Notification& notification) override;
+
 public slots:
-    void onSimulationStep();   // appele a chaque tick du QTimer
+    void onSimulationStep();   // a chaque coup de timer
     void onPlayClicked();
     void onPauseClicked();
     void onResetClicked();
+    void onSpeedChanged(int index);   // 0 a 3 -> x0.5, x1, x2, x4
 
 private:
-    // Pointeurs NON propriétaires
     Server* server;
     DashboardView* view;
 
-    // Timer d'animation
     QTimer* timer;
-
-    // Compteur de ticks (pour l'axe X de la courbe)
-    double tickCount;
 };
 
-#endif // AP4A_DASHBOARD_CONTROLLER_H
+#endif // AIRQ_DASHBOARD_CONTROLLER_H

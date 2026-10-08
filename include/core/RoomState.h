@@ -1,49 +1,30 @@
-#ifndef AP4A_ROOM_STATE_H
-#define AP4A_ROOM_STATE_H
+#ifndef AIRQ_ROOM_STATE_H
+#define AIRQ_ROOM_STATE_H
 
-/**
- * @brief Etat physique de la piece (Singleton).
- *
- * Modelise les grandeurs physiques de l'espace de travail :
- *  - CO2 (ppm)
- *  - Temperature (C)
- *  - Humidite (%)
- *  - Son (dB)
- *  - Lumiere (0.0 / 1.0)
- *  - Nombre d'occupants
- *
- * Chaque tick :
- *  - les occupants evoluent selon l'heure simulee
- *  - le CO2 augmente (respiration) ou diminue (ventilation)
- *  - la temperature et l'humidite suivent des tendances
- *
- * Les CAPTEURS lisent cet etat (avec un peu de bruit) au lieu
- * de generer des valeurs purement aleatoires.
- *
- * Les ACTIONNEURS modifient cet etat via setVentilation().
- */
+// Etat "physique" de la piece : CO2, temperature, humidite,
+// son, lumiere et nombre de personnes.
+// Les capteurs lisent ces valeurs (en ajoutant un peu de bruit)
+// et les actionneurs les modifient.
+// Une seule piece -> singleton.
+// 1 tick = 36 s d'horloge (voir SimClock).
 class RoomState {
 public:
-    // --------------------------------------------------------
-    // Singleton
-    // --------------------------------------------------------
     static RoomState& getInstance();
 
     RoomState(const RoomState&) = delete;
     RoomState& operator=(const RoomState&) = delete;
 
-    // --------------------------------------------------------
-    // Mise a jour physique (appelee par Scheduler chaque tick)
-    // --------------------------------------------------------
+    // Fait evoluer la piece d'un tick (appele par le Scheduler)
     void update();
 
-    // --------------------------------------------------------
-    // Contexte temporel (pousse par Scheduler)
-    // --------------------------------------------------------
+    // Retour a l'etat de depart
+    void reset();
+
+    // Le Scheduler donne l'heure et s'il fait jour
     void setDayContext(bool day, int hour);
 
     // --------------------------------------------------------
-    // Accesseurs (lus par les capteurs)
+    // Lecture (capteurs)
     // --------------------------------------------------------
     double getCO2()         const;
     double getTemperature() const;
@@ -53,18 +34,18 @@ public:
     double getOccupants()   const;
 
     // --------------------------------------------------------
-    // Controle (par les actionneurs)
+    // Actionneurs
     // --------------------------------------------------------
     void setVentilation(bool on);
     bool isVentilationOn() const;
+
+    void setPurifier(bool on);
+    bool isPurifierOn() const;
 
 private:
     RoomState();
     ~RoomState() = default;
 
-    // --------------------------------------------------------
-    // Etat physique
-    // --------------------------------------------------------
     double co2;
     double temperature;
     double humidity;
@@ -73,27 +54,28 @@ private:
     double occupants;
 
     bool ventilationOn;
+    bool purifierOn;
 
-    // --------------------------------------------------------
-    // Contexte temporel
-    // --------------------------------------------------------
     bool isDay;
     int  currentHour;
 
     // --------------------------------------------------------
-    // Constantes de simulation
+    // Reglages de la simulation (valeurs par tick)
     // --------------------------------------------------------
-    static constexpr double CO2_BASE = 400.0;   // air exterieur (ppm)
-    static constexpr double CO2_PER_PERSON = 0.15;    // ppm/tick par occupant
-    static constexpr double CO2_VENT_RATE = 5.0;     // ppm/tick retires par ventilation
-    static constexpr double CO2_LEAK = 0.1;     // fuite naturelle
+    static constexpr double CO2_BASE       = 400.0;   // air exterieur (ppm)
+    static constexpr double CO2_PER_PERSON = 0.20;    // ppm ajoutes par personne
+    static constexpr double CO2_VENT_RATE  = 5.0;     // ppm retires par la ventilation
+    static constexpr double CO2_PURIF_RATE = 1.5;     // ppm retires par le purificateur
+    static constexpr double CO2_LEAK_RATE  = 0.003;   // l'air se renouvelle un peu tout seul
 
-    static constexpr double TEMP_BASE = 22.0;    // confort (C)
-    static constexpr double TEMP_MAX = 26.0;    // sans ventilation
-    static constexpr double TEMP_VENT = 20.0;    // avec ventilation
+    static constexpr double TEMP_BASE  = 22.0;
+    static constexpr double TEMP_MAX   = 26.0;   // jour, sans ventilation
+    static constexpr double TEMP_NIGHT = 19.0;   // nuit, sans ventilation
+    static constexpr double TEMP_VENT  = 20.0;   // avec ventilation
 
-    static constexpr double HUM_BASE = 50.0;
-    static constexpr double HUM_VENT = 40.0;
+    static constexpr double HUM_BASE  = 50.0;
+    static constexpr double HUM_VENT  = 40.0;
+    static constexpr double HUM_PURIF = 45.0;   // le purificateur asseche un peu
 
     static constexpr double HUM_MIN = 20.0;
     static constexpr double HUM_MAX = 80.0;
@@ -101,4 +83,4 @@ private:
     static constexpr int    MAX_OCCUPANTS = 15;
 };
 
-#endif // AP4A_ROOM_STATE_H
+#endif // AIRQ_ROOM_STATE_H

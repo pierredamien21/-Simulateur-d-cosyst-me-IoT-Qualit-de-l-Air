@@ -1,5 +1,5 @@
-#ifndef AP4A_SENSOR_FACTORY_H
-#define AP4A_SENSOR_FACTORY_H
+#ifndef AIRQ_SENSOR_FACTORY_H
+#define AIRQ_SENSOR_FACTORY_H
 
 #include <memory>
 #include <string>
@@ -7,22 +7,14 @@
 class Sensor;
 class Server;
 
-/**
- * @brief Fabrique de capteurs (pattern Factory).
- *
- * Cree dynamiquement une instance de Sensor (via ses
- * specialisations) a partir d'un type textuel :
- *   "Temperature", "Humidity", "CO2", "Sound", "Light"
- *
- * Retourne nullptr si le type est inconnu.
- */
+// Factory : cree le bon capteur a partir de son nom
+// ("Temperature", "Humidity", "CO2", "Sound", "Light").
+// Renvoie nullptr si le nom n'existe pas.
 class SensorFactory {
 public:
-    // Interdit l'instanciation (classe utilitaire)
-    SensorFactory() = delete;
+    SensorFactory() = delete;   // que des methodes statiques
 
-    // Methode statique de creation
     static std::unique_ptr<Sensor> create(const std::string& type, Server* srv);
 };
 
-#endif // AP4A_SENSOR_FACTORY_H
+#endif // AIRQ_SENSOR_FACTORY_H

@@ -1,14 +1,10 @@
-#ifndef AP4A_AIR_PURIFIER_H
-#define AP4A_AIR_PURIFIER_H
+#ifndef AIRQ_AIR_PURIFIER_H
+#define AIRQ_AIR_PURIFIER_H
 
 #include "core/Actuator.h"
 
-/**
- * @brief Purificateur d'air.
- *
- * Active lorsque l'AQI est degrade ou qu'une anomalie
- * est detectee (decision du Server).
- */
+// Purificateur d'air : premiere reaction quand l'AQI baisse.
+// Il fait un peu baisser le CO2 et l'humidite de la piece.
 class AirPurifier : public Actuator {
 public:
     AirPurifier();
@@ -22,4 +18,4 @@ private:
     bool active;
 };
 
-#endif // AP4A_AIR_PURIFIER_H
+#endif // AIRQ_AIR_PURIFIER_H

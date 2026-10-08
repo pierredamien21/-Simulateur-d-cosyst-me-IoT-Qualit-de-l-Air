@@ -1,14 +1,10 @@
-#ifndef AP4A_VENTILATION_SYSTEM_H
-#define AP4A_VENTILATION_SYSTEM_H
+#ifndef AIRQ_VENTILATION_SYSTEM_H
+#define AIRQ_VENTILATION_SYSTEM_H
 
 #include "core/Actuator.h"
 
-/**
- * @brief Systeme de ventilation.
- *
- * Active lorsque le CO2 depasse un seuil critique
- * ou que l'AQI se degrade (decision du Server).
- */
+// Ventilation : la grosse solution quand le CO2 monte trop
+// (ou va bientot depasser le seuil).
 class VentilationSystem : public Actuator {
 public:
     VentilationSystem();
@@ -22,4 +18,4 @@ private:
     bool active;
 };
 
-#endif // AP4A_VENTILATION_SYSTEM_H
+#endif // AIRQ_VENTILATION_SYSTEM_H
